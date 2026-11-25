@@ -1,5 +1,27 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
+  Plus,
+  PanelLeftClose,
+  PanelLeft,
+  Trash2,
+  ArrowUp,
+  Copy,
+  Check,
+  RotateCcw,
+  ThumbsUp,
+  ThumbsDown,
+  BarChart3,
+  Settings,
+  X,
+  MessageSquare,
+  ChevronDown,
+  Activity,
+  Cpu,
+  Database,
+  Wifi,
+  WifiOff,
+} from 'lucide-react'
+import {
   loadModel,
   getMetrics,
   isModelReady,
@@ -24,46 +46,25 @@ import {
   type ChatMessage,
   type ChatSession,
 } from './chatStorage'
-import {
-  PlusIcon,
-  SidebarIcon,
-  TrashIcon,
-  SendIcon,
-  CopyIcon,
-  CheckIcon,
-  RefreshIcon,
-  ThumbsUpIcon,
-  ThumbsDownIcon,
-  SparklesIcon,
-  ChartIcon,
-  SettingsIcon,
-  CloseIcon,
-  MessageSquareIcon,
-  ChevronDownIcon,
-} from './icons'
 
 const SAMPLE_PROMPTS = [
   {
     title: 'Customer Review',
-    desc: 'Analyze tone & satisfaction',
     prompt:
       'I ordered this product last week and the build quality is extraordinary, but delivery was delayed by three days.',
   },
   {
     title: 'Technical Inquiry',
-    desc: 'Detect technical question intent',
     prompt:
       'How do I optimize IndexedDB transactions for heavy offline storage in a multi-threaded web worker?',
   },
   {
     title: 'Commercial Request',
-    desc: 'Information & pricing inquiry',
     prompt:
       'Could you please provide the pricing tiers, enterprise licensing terms, and onboarding documentation for our team?',
   },
   {
-    title: 'Complexity & Keywords',
-    desc: 'Extract heuristics & reading level',
+    title: 'Complexity Check',
     prompt:
       'Asynchronous event-driven microservices architecture facilitates resilient distributed fault isolation across heterogeneous edge environments.',
   },
@@ -107,7 +108,6 @@ export default function App() {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
-  // Network status listener
   useEffect(() => {
     const onOnline = () => setOnline(true)
     const onOffline = () => setOnline(false)
@@ -119,18 +119,15 @@ export default function App() {
     }
   }, [])
 
-  // Storage & cache stats
   useEffect(() => {
     refreshCacheStats().then(setCacheStats)
     estimateStorage().then(setStorageEst)
   }, [])
 
-  // Auto-scroll on new message
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [sessions, activeSessionId, processing])
 
-  // Sync sessions to localStorage
   const updateSessions = useCallback(
     (updater: (prev: ChatSession[]) => ChatSession[]) => {
       setSessions((prev) => {
@@ -149,7 +146,6 @@ export default function App() {
     setCacheStats(getCacheStats())
   }, [])
 
-  // Handle Model Loading
   const handleLoadModel = async () => {
     setError(null)
     try {
@@ -168,15 +164,16 @@ export default function App() {
     }
   }
 
-  // Handle Send / Analyze
   const handleSend = async (textToSend?: string, forceRefresh = false) => {
     const text = (textToSend ?? input).trim()
     if (!text || processing) return
 
     setInput('')
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto'
+    }
     setError(null)
 
-    // Ensure we have an active session
     let currentSessionId = activeSessionId
     if (!currentSessionId || !sessions.some((s) => s.id === currentSessionId)) {
       const newSess = createNewSession()
@@ -186,20 +183,18 @@ export default function App() {
       updateSessions((prev) => [newSess, ...prev])
     }
 
-    const userMsgId = `user_${Date.now()}`
     const userMsg: ChatMessage = {
-      id: userMsgId,
+      id: `user_${Date.now()}`,
       role: 'user',
       content: text,
       timestamp: Date.now(),
     }
 
-    // Add user message immediately
     updateSessions((prev) =>
       prev.map((s) => {
         if (s.id !== currentSessionId) return s
         const isFirst = s.messages.length === 0
-        const autoTitle = isFirst ? text.slice(0, 28) + (text.length > 28 ? '…' : '') : s.title
+        const autoTitle = isFirst ? text.slice(0, 26) + (text.length > 26 ? '…' : '') : s.title
         return {
           ...s,
           title: autoTitle,
@@ -212,7 +207,6 @@ export default function App() {
     setProcessing(true)
 
     try {
-      // Auto-load model if not ready
       if (!isModelReady()) {
         await handleLoadModel()
         if (!isModelReady()) {
@@ -230,7 +224,7 @@ export default function App() {
       const assistantMsg: ChatMessage = {
         id: `assistant_${Date.now()}`,
         role: 'assistant',
-        content: generateConversationalResponse(text, result),
+        content: generateConversationalResponse(result),
         result,
         timestamp: Date.now(),
       }
@@ -253,12 +247,10 @@ export default function App() {
     } finally {
       setProcessing(false)
       refreshMetrics()
-      // Refocus input
       setTimeout(() => textareaRef.current?.focus(), 50)
     }
   }
 
-  // Create New Chat
   const handleNewChat = () => {
     const newSess = createNewSession()
     updateSessions((prev) => [newSess, ...prev])
@@ -269,7 +261,6 @@ export default function App() {
     setTimeout(() => textareaRef.current?.focus(), 50)
   }
 
-  // Delete Chat Session
   const handleDeleteSession = (id: string, e: React.MouseEvent) => {
     e.stopPropagation()
     const remaining = sessions.filter((s) => s.id !== id)
@@ -287,7 +278,6 @@ export default function App() {
     }
   }
 
-  // Clear All Sessions
   const handleClearAllSessions = () => {
     if (confirm('Clear all conversation history?')) {
       const fresh = createNewSession()
@@ -297,14 +287,12 @@ export default function App() {
     }
   }
 
-  // Clear Cache
   const handleClearCache = async () => {
     await clearCache()
     setCacheStats({ hits: 0, misses: 0, entries: 0 })
     estimateStorage().then(setStorageEst)
   }
 
-  // Auto-resize textarea
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value)
     if (textareaRef.current) {
@@ -313,7 +301,6 @@ export default function App() {
     }
   }
 
-  // Keydown handler
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -329,132 +316,126 @@ export default function App() {
   }
 
   return (
-    <div className="chatgpt-root">
-      {/* Mobile sidebar overlay backdrop */}
+    <div className="nb-root">
       {sidebarOpen && (
         <div
-          className="sidebar-backdrop"
+          className="nb-backdrop"
           onClick={() => setSidebarOpen(false)}
         />
       )}
 
-      {/* Sidebar */}
-      <aside className={`sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
-        <div className="sidebar-top">
-          <button className="new-chat-btn" onClick={handleNewChat}>
-            <div className="new-chat-content">
-              <span className="logo-sparkle">
-                <SparklesIcon size={16} />
-              </span>
-              <span>New chat</span>
-            </div>
-            <PlusIcon size={16} />
+      {/* Neo-Brutalist Sidebar */}
+      <aside className={`nb-sidebar ${sidebarOpen ? 'open' : 'closed'}`}>
+        <div className="sidebar-top-bar">
+          <div className="brand-inline">
+            <img src="/logo.png" alt="MicroPilot" className="logo-sidebar" />
+            <span className="brand-name">MicroPilot</span>
+          </div>
+          <button
+            className="nb-icon-btn flat"
+            onClick={() => setSidebarOpen(false)}
+            title="Collapse sidebar"
+          >
+            <PanelLeftClose size={18} />
           </button>
         </div>
 
-        <div className="sidebar-history-label">Recent Chats</div>
+        <div className="sidebar-new-wrap">
+          <button className="nb-btn-primary full" onClick={handleNewChat}>
+            <span>New chat</span>
+            <Plus size={16} />
+          </button>
+        </div>
 
-        <div className="sidebar-history-list">
+        <div className="sidebar-label">Chats</div>
+
+        <div className="sidebar-list">
           {sessions.map((sess) => {
             const isActive = sess.id === activeSessionId
             return (
               <div
                 key={sess.id}
-                className={`history-item ${isActive ? 'active' : ''}`}
+                className={`nb-chat-row ${isActive ? 'active' : ''}`}
                 onClick={() => {
                   setActiveId(sess.id)
                   setActiveSessionId(sess.id)
                 }}
               >
-                <div className="history-icon">
-                  <MessageSquareIcon size={15} />
-                </div>
-                <div className="history-title">{sess.title}</div>
+                <MessageSquare size={14} className="chat-row-icon" />
+                <span className="chat-row-title">{sess.title}</span>
                 <button
-                  className="history-delete-btn"
+                  className="chat-row-del"
                   title="Delete chat"
                   onClick={(e) => handleDeleteSession(sess.id, e)}
                 >
-                  <TrashIcon size={14} />
+                  <Trash2 size={13} />
                 </button>
               </div>
             )
           })}
         </div>
 
-        <div className="sidebar-footer">
-          <div className="edge-info-card">
-            <div className="edge-info-header">
-              <span className="badge-edge">100% On-Device</span>
-              <span className="edge-model-name">MobileBERT-MNLI</span>
-            </div>
-            <p className="edge-info-sub">Quantized ONNX · Transformers.js Web</p>
-          </div>
-
-          <div className="sidebar-footer-actions">
-            <button
-              className="sidebar-footer-btn"
-              onClick={() => setStatsModalOpen(true)}
-              title="Edge Telemetry & Settings"
-            >
-              <SettingsIcon size={16} />
-              <span>Settings & Telemetry</span>
-            </button>
-          </div>
+        <div className="sidebar-bottom">
+          <button
+            className="nb-sidebar-footer-btn"
+            onClick={() => setStatsModalOpen(true)}
+          >
+            <Settings size={15} />
+            <span>Settings & Telemetry</span>
+          </button>
         </div>
       </aside>
 
-      {/* Main Chat Area */}
-      <div className="main-content">
-        {/* Top Header */}
-        <header className="chat-header">
-          <div className="chat-header-left">
-            <button
-              className="icon-btn"
-              onClick={() => setSidebarOpen((prev) => !prev)}
-              title="Toggle sidebar"
-            >
-              <SidebarIcon size={19} />
-            </button>
+      {/* Main Chat Container */}
+      <div className="nb-main">
+        {/* Clean Plain Header */}
+        <header className="nb-header">
+          <div className="header-left">
+            {!sidebarOpen && (
+              <button
+                className="nb-icon-btn"
+                onClick={() => setSidebarOpen(true)}
+                title="Open sidebar"
+              >
+                <PanelLeft size={18} />
+              </button>
+            )}
 
             <button
-              className="model-selector-btn"
+              className="nb-model-selector"
               onClick={() => setModelDropdownOpen((prev) => !prev)}
             >
-              <div className="model-selector-inner">
-                <span className="model-title">MicroPilot</span>
-                <span className="model-badge">MobileBERT Edge</span>
-              </div>
-              <ChevronDownIcon size={14} />
+              <img src="/logo.png" alt="MicroPilot" className="logo-header" />
+              <span className="model-selector-name">MicroPilot</span>
+              <span className="model-selector-tag">MobileBERT</span>
+              <ChevronDown size={14} />
             </button>
 
             {modelDropdownOpen && (
-              <div className="model-dropdown">
-                <div className="dropdown-title">Active Edge Model</div>
-                <div className="dropdown-desc">
-                  Runs zero-shot text classification and local heuristics entirely on your device.
-                  No cloud API calls or prompt transmission.
-                </div>
-                <div className="dropdown-meta">
-                  <div><strong>ID:</strong> Xenova/mobilebert-uncased-mnli</div>
-                  <div><strong>Size:</strong> ~27 MB (quantized ONNX)</div>
-                  <div><strong>Engine:</strong> ONNX Runtime WASM</div>
+              <div className="nb-dropdown">
+                <div className="dropdown-title">On-Device Edge Engine</div>
+                <p className="dropdown-text">
+                  Runs zero-shot classification locally in your browser via WASM. No cloud inference or external APIs.
+                </p>
+                <div className="dropdown-specs">
+                  <div>Model: <strong>Xenova/mobilebert-uncased-mnli</strong></div>
+                  <div>Artifact: <strong>~27 MB quantized ONNX</strong></div>
                 </div>
                 <button
-                  className="dropdown-action-btn"
+                  className="nb-btn-primary full"
                   onClick={() => {
                     handleLoadModel()
                     setModelDropdownOpen(false)
                   }}
                 >
-                  {isModelReady() ? 'Reload Model Weights' : 'Preload Model Now'}
+                  {isModelReady() ? 'Reload Weights' : 'Preload Model'}
                 </button>
               </div>
             )}
           </div>
 
-          <div className="chat-header-right">
-            <span className={`status-pill ${modelPillStatusClass(metrics.status)}`}>
+          <div className="header-right">
+            <span className={`nb-status-pill ${modelPillStatusClass(metrics.status)}`}>
               <span className="status-dot" />
               {metrics.status === 'ready'
                 ? 'AI Ready'
@@ -467,61 +448,58 @@ export default function App() {
                 : 'AI Idle'}
             </span>
 
-            <span className={`status-pill ${online ? 'online' : 'offline'}`}>
-              <span className="status-dot" />
-              {online ? 'Online' : 'Offline'}
+            <span className={`nb-status-pill ${online ? 'online' : 'offline'}`}>
+              {online ? <Wifi size={12} /> : <WifiOff size={12} />}
+              <span>{online ? 'Online' : 'Offline'}</span>
             </span>
 
             <button
-              className="icon-btn header-stats-btn"
+              className="nb-icon-btn"
               onClick={() => setStatsModalOpen(true)}
-              title="View edge performance telemetry"
+              title="Edge Telemetry"
             >
-              <ChartIcon size={17} />
+              <BarChart3 size={17} />
             </button>
 
             <button
-              className="icon-btn mobile-new-btn"
+              className="nb-icon-btn mobile-only"
               onClick={handleNewChat}
               title="New Chat"
             >
-              <PlusIcon size={18} />
+              <Plus size={18} />
             </button>
           </div>
         </header>
 
-        {/* Message Stream */}
-        <div className="message-scroll-area">
+        {/* Scrollable Message Area */}
+        <div className="nb-scroll-area">
           {(!activeSession || activeSession.messages.length === 0) && (
-            <div className="hero-container">
-              <div className="hero-mark">
-                <SparklesIcon size={32} />
-              </div>
-              <h1 className="hero-title">What text would you like to analyze?</h1>
-              <p className="hero-subtitle">
-                On-device zero-shot classification, sentiment analysis, and text intelligence powered by MobileBERT.
+            <div className="nb-hero">
+              <img src="/logo.png" alt="MicroPilot" className="logo-hero" />
+              <h1 className="hero-heading">What text can I analyze?</h1>
+              <p className="hero-sub">
+                Private, zero-shot classification and sentiment analysis running 100% on-device.
               </p>
 
-              <div className="prompt-grid">
+              <div className="nb-prompt-grid">
                 {SAMPLE_PROMPTS.map((sample, idx) => (
-                  <div
+                  <button
                     key={idx}
-                    className="prompt-card"
+                    className="nb-prompt-card"
                     onClick={() => handleSend(sample.prompt)}
                   >
-                    <div className="prompt-card-title">{sample.title}</div>
-                    <div className="prompt-card-desc">{sample.desc}</div>
-                    <div className="prompt-card-snippet">“{sample.prompt}”</div>
-                  </div>
+                    <div className="prompt-title">{sample.title}</div>
+                    <div className="prompt-snippet">“{sample.prompt}”</div>
+                  </button>
                 ))}
               </div>
             </div>
           )}
 
           {activeSession && activeSession.messages.length > 0 && (
-            <div className="messages-list">
+            <div className="nb-messages">
               {activeSession.messages.map((msg) => (
-                <MessageBubble
+                <MessageItem
                   key={msg.id}
                   message={msg}
                   onReAnalyze={() => handleSend(msg.content, true)}
@@ -536,26 +514,24 @@ export default function App() {
               ))}
 
               {processing && (
-                <div className="message-row assistant">
-                  <div className="avatar assistant-avatar">
-                    <SparklesIcon size={16} />
-                  </div>
-                  <div className="message-bubble assistant-bubble">
-                    <div className="thinking-row">
-                      <span className="pulsing-dot" />
-                      <span className="thinking-text">
+                <div className="msg-row assistant">
+                  <img src="/logo.png" alt="MicroPilot" className="logo-avatar" />
+                  <div className="msg-content">
+                    <div className="thinking-inline">
+                      <span className="thinking-square" />
+                      <span>
                         {statusMsg ||
                           (metrics.status === 'downloading'
-                            ? `Downloading MobileBERT model (${modelProgress}%)…`
+                            ? `Downloading MobileBERT (${modelProgress}%)…`
                             : metrics.status === 'initializing'
-                            ? 'Warming up WASM runtime…'
+                            ? 'Initializing WASM runtime…'
                             : 'Analyzing on-device…')}
                       </span>
                     </div>
                     {metrics.status === 'downloading' && (
-                      <div className="dl-progress-bar-wrap">
+                      <div className="nb-progress-bar">
                         <div
-                          className="dl-progress-bar-fill"
+                          className="nb-progress-fill"
                           style={{ width: `${modelProgress}%` }}
                         />
                       </div>
@@ -568,137 +544,124 @@ export default function App() {
           )}
         </div>
 
-        {/* Floating Input Dock */}
-        <div className="input-dock-container">
-          {error && <div className="input-error-toast">{error}</div>}
+        {/* Bottom Prompt Bar */}
+        <div className="nb-dock-wrap">
+          {error && <div className="nb-error-toast">{error}</div>}
 
-          <div className="input-dock">
+          <div className="nb-input-bar">
             <textarea
               ref={textareaRef}
               rows={1}
               value={input}
               onChange={handleInputChange}
               onKeyDown={handleKeyDown}
-              placeholder="Message MicroPilot or paste text to analyze locally…"
+              placeholder="Message MicroPilot..."
               disabled={processing}
             />
-
             <button
-              className={`send-button ${input.trim() ? 'active' : ''}`}
+              className={`nb-send-btn ${input.trim() ? 'active' : ''}`}
               onClick={() => handleSend()}
               disabled={!input.trim() || processing}
-              title="Analyze text"
+              title="Send"
             >
-              <SendIcon size={15} />
+              <ArrowUp size={16} strokeWidth={2.5} />
             </button>
           </div>
 
-          <div className="dock-disclaimer">
-            MicroPilot performs edge-only inference with MobileBERT-MNLI. Text never leaves your device.
+          <div className="nb-disclaimer">
+            MicroPilot runs MobileBERT-MNLI locally in your browser. Prompts never leave your device.
           </div>
         </div>
       </div>
 
       {/* Telemetry & Settings Modal */}
       {statsModalOpen && (
-        <div className="modal-backdrop" onClick={() => setStatsModalOpen(false)}>
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <div className="modal-header">
-              <div className="modal-title-wrap">
-                <ChartIcon size={20} />
-                <h2>Edge Telemetry & Settings</h2>
+        <div className="nb-modal-backdrop" onClick={() => setStatsModalOpen(false)}>
+          <div className="nb-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="nb-modal-header">
+              <div className="modal-title">
+                <Activity size={18} />
+                <span>Edge Telemetry & Settings</span>
               </div>
               <button
-                className="icon-btn"
+                className="nb-icon-btn flat"
                 onClick={() => setStatsModalOpen(false)}
               >
-                <CloseIcon size={18} />
+                <X size={18} />
               </button>
             </div>
 
-            <div className="modal-body">
-              <div className="stats-section-title">Engine Metrics</div>
-              <div className="modal-grid">
-                <div className="stat-box">
-                  <div className="stat-label">Model</div>
-                  <div className="stat-val">{metrics.modelName}</div>
+            <div className="nb-modal-body">
+              <div className="modal-group-title">Inference Engine</div>
+              <div className="nb-stats-grid">
+                <div className="nb-stat-box">
+                  <div className="stat-k">Model</div>
+                  <div className="stat-v">{metrics.modelName}</div>
                 </div>
-                <div className="stat-box">
-                  <div className="stat-label">Model Artifact</div>
-                  <div className="stat-val small-mono">{metrics.artifact}</div>
-                </div>
-                <div className="stat-box">
-                  <div className="stat-label">Download Time</div>
-                  <div className="stat-val">
+                <div className="nb-stat-box">
+                  <div className="stat-k">Download</div>
+                  <div className="stat-v">
                     {metrics.downloadDurationMs != null
                       ? `${(metrics.downloadDurationMs / 1000).toFixed(2)}s`
                       : '—'}
                   </div>
                 </div>
-                <div className="stat-box">
-                  <div className="stat-label">Warm-Up Init</div>
-                  <div className="stat-val">
+                <div className="nb-stat-box">
+                  <div className="stat-k">Init Time</div>
+                  <div className="stat-v">
                     {metrics.initDurationMs != null ? `${metrics.initDurationMs} ms` : '—'}
                   </div>
                 </div>
-                <div className="stat-box">
-                  <div className="stat-label">Last Latency</div>
-                  <div className="stat-val highlight">
+                <div className="nb-stat-box highlight">
+                  <div className="stat-k">Last Latency</div>
+                  <div className="stat-v">
                     {metrics.lastInferenceMs != null ? `${metrics.lastInferenceMs} ms` : '—'}
                   </div>
                 </div>
-                <div className="stat-box">
-                  <div className="stat-label">Avg AI Latency</div>
-                  <div className="stat-val">
+                <div className="nb-stat-box">
+                  <div className="stat-k">Avg AI Latency</div>
+                  <div className="stat-v">
                     {metrics.avgInferenceMs != null ? `${metrics.avgInferenceMs} ms` : '—'}
                   </div>
                 </div>
-                <div className="stat-box">
-                  <div className="stat-label">Total Inferences</div>
-                  <div className="stat-val">{metrics.inferenceCount}</div>
-                </div>
-                <div className="stat-box">
-                  <div className="stat-label">Local Heuristic Ops</div>
-                  <div className="stat-val">{metrics.localOpCount}</div>
-                </div>
-              </div>
-
-              <div className="stats-section-title" style={{ marginTop: 18 }}>
-                IndexedDB Cache & Storage
-              </div>
-              <div className="modal-grid">
-                <div className="stat-box">
-                  <div className="stat-label">Cache Hits / Misses</div>
-                  <div className="stat-val">
-                    <span className="green-text">{cacheStats.hits}</span> /{' '}
-                    <span className="muted-text">{cacheStats.misses}</span>
-                  </div>
-                </div>
-                <div className="stat-box">
-                  <div className="stat-label">Cached Entries</div>
-                  <div className="stat-val">{cacheStats.entries}</div>
-                </div>
-                <div className="stat-box">
-                  <div className="stat-label">Storage Usage</div>
-                  <div className="stat-val">{storageEst}</div>
-                </div>
-                <div className="stat-box">
-                  <div className="stat-label">Cache Speedup</div>
-                  <div className="stat-val green-text">
-                    {cacheStats.hits > 0 ? '~1 ms (instant)' : 'Ready'}
+                <div className="nb-stat-box">
+                  <div className="stat-k">Inferences / Local Ops</div>
+                  <div className="stat-v">
+                    {metrics.inferenceCount} / {metrics.localOpCount}
                   </div>
                 </div>
               </div>
 
-              <div className="modal-actions-list">
-                <button className="modal-action-btn" onClick={handleLoadModel}>
-                  Reload Model Weights
+              <div className="modal-group-title" style={{ marginTop: 18 }}>
+                IndexedDB Cache
+              </div>
+              <div className="nb-stats-grid">
+                <div className="nb-stat-box">
+                  <div className="stat-k">Hits / Misses</div>
+                  <div className="stat-v">
+                    {cacheStats.hits} / {cacheStats.misses}
+                  </div>
+                </div>
+                <div className="nb-stat-box">
+                  <div className="stat-k">Entries / Storage</div>
+                  <div className="stat-v">
+                    {cacheStats.entries} ({storageEst})
+                  </div>
+                </div>
+              </div>
+
+              <div className="modal-actions">
+                <button className="nb-btn-secondary" onClick={handleLoadModel}>
+                  <Cpu size={15} />
+                  <span>Reload Model Weights</span>
                 </button>
-                <button className="modal-action-btn danger" onClick={handleClearCache}>
-                  Clear Model & Inference Cache
+                <button className="nb-btn-secondary danger" onClick={handleClearCache}>
+                  <Database size={15} />
+                  <span>Clear Inference Cache</span>
                 </button>
-                <button className="modal-action-btn danger" onClick={handleClearAllSessions}>
-                  Clear All Conversation History
+                <button className="nb-btn-secondary danger" onClick={handleClearAllSessions}>
+                  <Trash2 size={15} />
+                  <span>Clear All Conversations</span>
                 </button>
               </div>
             </div>
@@ -709,24 +672,16 @@ export default function App() {
   )
 }
 
-function generateConversationalResponse(
-  _text: string,
-  result: AnalysisResult
-): string {
+function generateConversationalResponse(result: AnalysisResult): string {
   const intentLabel = result.intent ? result.intent.label : 'General'
   const intentConfidence = result.intent ? (result.intent.score * 100).toFixed(1) : '100'
   const sentimentLabel = result.sentiment ? result.sentiment.label : 'neutral'
   const sentimentConfidence = result.sentiment ? (result.sentiment.score * 100).toFixed(1) : '100'
 
-  return `I analyzed your text on-device. Here are the core insights:
-
-• **Primary Intent:** **${intentLabel}** (${intentConfidence}% confidence)
-• **Sentiment Tone:** **${sentimentLabel.toUpperCase()}** (${sentimentConfidence}% confidence)
-• **Text Complexity:** **${result.stats.complexity}** (${result.stats.wordCount} words, ${result.stats.sentenceCount} sentences)
-${result.stats.keywords.length > 0 ? `• **Key Keywords:** ${result.stats.keywords.join(', ')}` : ''}`
+  return `Intent: **${intentLabel}** (${intentConfidence}%) · Sentiment: **${sentimentLabel.toUpperCase()}** (${sentimentConfidence}%) · Complexity: **${result.stats.complexity}** (${result.stats.wordCount} words)`
 }
 
-function MessageBubble({
+function MessageItem({
   message,
   onReAnalyze,
   feedback,
@@ -744,193 +699,110 @@ function MessageBubble({
   const handleCopy = () => {
     let textToCopy = message.content
     if (result) {
-      textToCopy += `\n\n--- Detailed Metrics ---\nIntent: ${result.intent?.label} (${(
+      textToCopy += `\nIntent: ${result.intent?.label} (${(
         (result.intent?.score || 0) * 100
-      ).toFixed(1)}%)\nSentiment: ${result.sentiment?.label}\nLatency: ${result.inferenceMs} ms\nSource: ${
-        result.fromCache ? 'Cache' : 'On-device AI'
-      }`
+      ).toFixed(1)}%)\nSentiment: ${result.sentiment?.label}\nLatency: ${result.inferenceMs} ms`
     }
     navigator.clipboard.writeText(textToCopy).catch(() => {})
     setCopied(true)
-    setTimeout(() => setCopied(false), 1600)
+    setTimeout(() => setCopied(false), 1500)
   }
 
   if (isUser) {
     return (
-      <div className="message-row user">
-        <div className="message-bubble user-bubble">
-          <div className="user-message-text">{message.content}</div>
-        </div>
+      <div className="msg-row user">
+        <div className="nb-user-bubble">{message.content}</div>
       </div>
     )
   }
 
   return (
-    <div className="message-row assistant">
-      <div className="avatar assistant-avatar">
-        <SparklesIcon size={16} />
-      </div>
+    <div className="msg-row assistant">
+      <img src="/logo.png" alt="MicroPilot" className="logo-avatar" />
 
-      <div className="message-bubble assistant-bubble">
-        {/* Conversational Text */}
-        <div className="assistant-text-content">
-          {message.content.split('\n\n').map((paragraph, i) => (
-            <p key={i} style={{ marginBottom: i < 1 ? 12 : 0 }}>
-              {paragraph.split('\n').map((line, j) => {
-                // Formatting bullet points cleanly
-                if (line.startsWith('• ')) {
-                  const parts = line.slice(2).split('**')
-                  return (
-                    <span key={j} className="bullet-line">
-                      <span className="bullet-dot">•</span>
-                      <span>
-                        {parts.map((p, k) =>
-                          k % 2 === 1 ? <strong key={k}>{p}</strong> : p
-                        )}
-                      </span>
-                    </span>
-                  )
-                }
-                return (
-                  <span key={j}>
-                    {line}
-                    <br />
-                  </span>
-                )
-              })}
-            </p>
-          ))}
+      <div className="msg-content">
+        <div className="assistant-summary-line">
+          {message.content.split('**').map((part, idx) =>
+            idx % 2 === 1 ? <strong key={idx}>{part}</strong> : part
+          )}
         </div>
 
-        {/* Detailed Interactive AI Cards */}
         {result && (
-          <div className="assistant-rich-panel">
-            {/* Intent Breakdown */}
+          <div className="nb-analysis-box">
             {result.intent && (
-              <div className="rich-section">
-                <div className="rich-section-header">
-                  <span className="rich-section-title">Zero-Shot Intent Confidence</span>
-                  <span className="rich-pill primary">
-                    {result.intent.label} · {(result.intent.score * 100).toFixed(1)}%
-                  </span>
-                </div>
-                <div className="intent-bars-list">
-                  {result.intent.allScores.slice(0, 4).map((s) => (
-                    <div className="intent-bar-row" key={s.label}>
-                      <span className="intent-bar-label">{s.label}</span>
-                      <div className="intent-bar-track">
-                        <div
-                          className="intent-bar-fill"
-                          style={{ width: `${Math.round(s.score * 100)}%` }}
-                        />
-                      </div>
-                      <span className="intent-bar-percent">
-                        {(s.score * 100).toFixed(0)}%
-                      </span>
+              <div className="analysis-bars">
+                {result.intent.allScores.slice(0, 4).map((s) => (
+                  <div className="bar-row" key={s.label}>
+                    <span className="bar-label">{s.label}</span>
+                    <div className="bar-track">
+                      <div
+                        className="bar-fill"
+                        style={{ width: `${Math.round(s.score * 100)}%` }}
+                      />
                     </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Sentiment & Text Stats Grid */}
-            <div className="rich-columns-grid">
-              {result.sentiment && (
-                <div className="rich-sub-card">
-                  <div className="sub-card-label">Sentiment Detection</div>
-                  <div className="sentiment-display">
-                    <span className={`sentiment-tag ${result.sentiment.label}`}>
-                      {result.sentiment.label}
-                    </span>
-                    <span className="sentiment-score">
-                      {(result.sentiment.score * 100).toFixed(1)}% confidence
-                    </span>
+                    <span className="bar-pct">{(s.score * 100).toFixed(0)}%</span>
                   </div>
-                </div>
-              )}
-
-              <div className="rich-sub-card">
-                <div className="sub-card-label">Text Heuristics</div>
-                <div className="stats-inline-row">
-                  <div><strong>{result.stats.wordCount}</strong> words</div>
-                  <div><strong>{result.stats.charCount}</strong> chars</div>
-                  <div><strong>{result.stats.sentenceCount}</strong> sents</div>
-                  <div className="complexity-badge">{result.stats.complexity}</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Keywords */}
-            {result.stats.keywords.length > 0 && (
-              <div className="keywords-chip-row">
-                <span className="keywords-label">Keywords:</span>
-                {result.stats.keywords.map((kw) => (
-                  <span key={kw} className="keyword-chip">
-                    {kw}
-                  </span>
                 ))}
               </div>
             )}
 
-            {/* Execution / Cache Latency Banner */}
-            <div className="execution-banner">
-              <div className="execution-source">
-                {result.fromCache ? (
-                  <span className="source-badge cache">
-                    ⚡ Exact-Match Cache
-                  </span>
-                ) : (
-                  <span className="source-badge ai">
-                    🧠 On-Device MobileBERT
-                  </span>
-                )}
-                <span className="latency-label">
-                  Response time: <strong>{result.inferenceMs} ms</strong>
-                  {result.fromCache && result.originalInferenceMs && (
-                    <span className="saved-latency-pill">
-                      Saved ~{result.originalInferenceMs} ms
+            <div className="analysis-meta-strip">
+              <div className="meta-left">
+                <span>{result.stats.wordCount} words</span>
+                <span>·</span>
+                <span>{result.stats.charCount} chars</span>
+                <span>·</span>
+                <span>{result.stats.sentenceCount} sents</span>
+                {result.stats.keywords.length > 0 && (
+                  <>
+                    <span>·</span>
+                    <span className="keywords-inline">
+                      {result.stats.keywords.slice(0, 5).map((k) => (
+                        <span key={k} className="nb-kw-tag">
+                          {k}
+                        </span>
+                      ))}
                     </span>
-                  )}
+                  </>
+                )}
+              </div>
+
+              <div className="meta-right">
+                <span className={`nb-exec-tag ${result.fromCache ? 'cache' : 'ai'}`}>
+                  {result.fromCache ? '⚡ Cache' : 'On-Device'} · {result.inferenceMs} ms
                 </span>
+                {result.fromCache && result.originalInferenceMs && (
+                  <span className="saved-note">saved ~{result.originalInferenceMs} ms</span>
+                )}
               </div>
             </div>
           </div>
         )}
 
-        {/* Action Toolbar */}
-        <div className="assistant-action-bar">
-          <button
-            className="action-btn"
-            onClick={handleCopy}
-            title="Copy message and analysis"
-          >
-            {copied ? <CheckIcon size={14} /> : <CopyIcon size={14} />}
-            <span>{copied ? 'Copied' : 'Copy'}</span>
+        <div className="msg-actions">
+          <button className="nb-msg-action" onClick={handleCopy} title="Copy">
+            {copied ? <Check size={14} /> : <Copy size={14} />}
           </button>
-
           <button
-            className="action-btn"
+            className="nb-msg-action"
             onClick={onReAnalyze}
-            title="Re-run live on-device inference (bypasses cache)"
+            title="Re-run live inference"
           >
-            <RefreshIcon size={14} />
-            <span>Re-run live</span>
+            <RotateCcw size={14} />
           </button>
-
           <button
-            className={`action-btn icon-only ${feedback === 'up' ? 'active' : ''}`}
+            className={`nb-msg-action ${feedback === 'up' ? 'active' : ''}`}
             onClick={() => onFeedback('up')}
-            title="Good response"
+            title="Helpful"
           >
-            <ThumbsUpIcon size={14} />
+            <ThumbsUp size={14} />
           </button>
-
           <button
-            className={`action-btn icon-only ${feedback === 'down' ? 'active' : ''}`}
+            className={`nb-msg-action ${feedback === 'down' ? 'active' : ''}`}
             onClick={() => onFeedback('down')}
-            title="Bad response"
+            title="Not helpful"
           >
-            <ThumbsDownIcon size={14} />
+            <ThumbsDown size={14} />
           </button>
         </div>
       </div>
