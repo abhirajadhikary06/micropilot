@@ -2,10 +2,14 @@ import { Capacitor, registerPlugin } from '@capacitor/core'
 import type { IncomingNotification, NotificationReport } from './processor'
 
 export interface NotificationBridgePlugin {
-  isNotificationAccessEnabled(): Promise<{ enabled: boolean }>
+  isNotificationAccessEnabled(): Promise<{ enabled: boolean; serviceBound?: boolean }>
   openNotificationAccessSettings(): Promise<void>
   requestPostNotificationPermission(): Promise<{ granted: boolean }>
   getPendingNotifications(): Promise<{ notifications: IncomingNotification[] }>
+  scanActiveNotifications(): Promise<{
+    notifications: IncomingNotification[]
+    serviceBound?: boolean
+  }>
   postAnalysisReportNotification(options: {
     id: number
     title: string
@@ -24,13 +28,19 @@ export function isNativeAndroid(): boolean {
   return Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android'
 }
 
-export async function isNotificationListenerEnabled(): Promise<boolean> {
-  if (!isNativeAndroid()) return false
+export async function getNotificationListenerStatus(): Promise<{
+  enabled: boolean
+  serviceBound: boolean
+}> {
+  if (!isNativeAndroid()) return { enabled: false, serviceBound: false }
   try {
     const res = await NotificationBridge.isNotificationAccessEnabled()
-    return res.enabled
+    return {
+      enabled: Boolean(res.enabled),
+      serviceBound: Boolean(res.serviceBound),
+    }
   } catch {
-    return false
+    return { enabled: false, serviceBound: false }
   }
 }
 
@@ -108,6 +118,32 @@ export async function dispatchReportPushNotification(
   }
 }
 
+export async function drainPendingNotifications(): Promise<IncomingNotification[]> {
+  if (!isNativeAndroid()) return []
+  try {
+    const pending = await NotificationBridge.getPendingNotifications()
+    return pending.notifications || []
+  } catch {
+    return []
+  }
+}
+
+export async function scanActiveShadeNotifications(): Promise<{
+  notifications: IncomingNotification[]
+  serviceBound: boolean
+}> {
+  if (!isNativeAndroid()) return { notifications: [], serviceBound: false }
+  try {
+    const res = await NotificationBridge.scanActiveNotifications()
+    return {
+      notifications: res.notifications || [],
+      serviceBound: Boolean(res.serviceBound),
+    }
+  } catch {
+    return { notifications: [], serviceBound: false }
+  }
+}
+
 export async function subscribeToIncomingNotifications(
   onReceive: (notif: IncomingNotification) => void
 ): Promise<() => void> {
@@ -115,8 +151,8 @@ export async function subscribeToIncomingNotifications(
 
   if (isNativeAndroid()) {
     try {
-      const pending = await NotificationBridge.getPendingNotifications()
-      for (const n of pending.notifications || []) {
+      const pending = await drainPendingNotifications()
+      for (const n of pending) {
         onReceive(n)
       }
       removeHandle = await NotificationBridge.addListener('notificationReceived', (data) => {
@@ -144,7 +180,6 @@ export function consumeSharedTargetPayload(): IncomingNotification | null {
 
     if (!title && !combinedText) return null
 
-    // Clear query params cleanly without reloading
     const cleanUrl = window.location.pathname
     window.history.replaceState({}, document.title, cleanUrl)
 

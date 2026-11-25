@@ -58,11 +58,13 @@ import {
 } from './chatStorage'
 import {
   isNativeAndroid,
-  isNotificationListenerEnabled,
+  getNotificationListenerStatus,
   openAndroidNotificationSettings,
   requestPushPermission,
   getWebPushPermission,
   dispatchReportPushNotification,
+  drainPendingNotifications,
+  scanActiveShadeNotifications,
   subscribeToIncomingNotifications,
   consumeSharedTargetPayload,
 } from './notificationBridge'
@@ -162,6 +164,7 @@ export default function App() {
   // Notification Radar state
   const [reports, setReports] = useState<NotificationReport[]>(() => loadStoredReports())
   const [nativeListenerEnabled, setNativeListenerEnabled] = useState(false)
+  const [nativeServiceBound, setNativeServiceBound] = useState(false)
   const [pushGranted, setPushGranted] = useState(() => getWebPushPermission() === 'granted')
   const [simApp, setSimApp] = useState('WhatsApp')
   const [simText, setSimText] = useState('')
@@ -185,6 +188,8 @@ export default function App() {
 
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const notifQueueRef = useRef<Promise<void>>(Promise.resolve())
+  const seenNotifIdsRef = useRef<Set<string>>(new Set())
 
   const refreshMetrics = useCallback(() => {
     setMetrics(getMetrics())
@@ -209,60 +214,92 @@ export default function App() {
     }
   }, [])
 
-  // Process any incoming notification (from Android OS, Share Target, or Simulator)
+  // Serialize incoming notifications so ONNX Runtime WASM never runs two sessions concurrently
   const processIncomingNotification = useCallback(
-    async (notif: IncomingNotification) => {
-      setAnalyzingNotif(true)
-      setError(null)
-      try {
-        if (!isModelReady()) {
-          await handleLoadModel()
-          if (!isModelReady()) return
-        }
-        const report = await analyzeNotification(notif)
-        setReports((prev) => {
-          const next = [report, ...prev].slice(0, 50)
-          saveStoredReports(next)
-          return next
-        })
-        await dispatchReportPushNotification(report)
-        refreshMetrics()
-        estimateStorage().then(setStorageEst)
-      } catch (e: any) {
-        setError(e?.message || 'Failed to analyze notification')
-      } finally {
-        setAnalyzingNotif(false)
-        refreshMetrics()
+    (notif: IncomingNotification, shouldDispatchPush = true): Promise<void> => {
+      const dedupeKey = `${notif.id}|${notif.timestamp}`
+      if (seenNotifIdsRef.current.has(dedupeKey)) {
+        return Promise.resolve()
       }
+      seenNotifIdsRef.current.add(dedupeKey)
+
+      const runTask = async () => {
+        setAnalyzingNotif(true)
+        setError(null)
+        try {
+          if (!isModelReady()) {
+            await handleLoadModel()
+            if (!isModelReady()) return
+          }
+          const report = await analyzeNotification(notif)
+          setReports((prev) => {
+            const next = [report, ...prev].slice(0, 50)
+            saveStoredReports(next)
+            return next
+          })
+          if (shouldDispatchPush) {
+            await dispatchReportPushNotification(report)
+          }
+          refreshMetrics()
+          estimateStorage().then(setStorageEst)
+        } catch (e: any) {
+          setError(e?.message || 'Failed to analyze notification')
+        } finally {
+          setAnalyzingNotif(false)
+          refreshMetrics()
+        }
+      }
+
+      notifQueueRef.current = notifQueueRef.current.then(runTask, runTask)
+      return notifQueueRef.current
     },
     [handleLoadModel, refreshMetrics]
   )
+
+  const syncAndroidState = useCallback(async () => {
+    if (!isNativeAndroid()) return
+    const status = await getNotificationListenerStatus()
+    setNativeListenerEnabled(status.enabled)
+    setNativeServiceBound(status.serviceBound)
+
+    const pending = await drainPendingNotifications()
+    for (const item of pending) {
+      // Background triage already fired a native report while app was paused; analyze with MobileBERT for UI feed
+      processIncomingNotification(item, false)
+    }
+  }, [processIncomingNotification])
+
+  const handleScanShade = async () => {
+    if (!isNativeAndroid()) return
+    const res = await scanActiveShadeNotifications()
+    setNativeServiceBound(res.serviceBound)
+    for (const item of res.notifications) {
+      processIncomingNotification(item, false)
+    }
+  }
 
   // Check permissions, subscribe to Android NotificationListener, and handle Web Share Target
   useEffect(() => {
     let cleanupFn: (() => void) | null = null
 
     const initBridge = async () => {
-      if (isNativeAndroid()) {
-        const enabled = await isNotificationListenerEnabled()
-        setNativeListenerEnabled(enabled)
-      }
+      await syncAndroidState()
+
       const shared = consumeSharedTargetPayload()
       if (shared) {
         setActiveTab('radar')
-        await processIncomingNotification(shared)
+        await processIncomingNotification(shared, true)
       }
       cleanupFn = await subscribeToIncomingNotifications((incoming) => {
-        processIncomingNotification(incoming)
+        processIncomingNotification(incoming, true)
       })
     }
 
     initBridge()
 
-    const onVisibility = async () => {
-      if (document.visibilityState === 'visible' && isNativeAndroid()) {
-        const enabled = await isNotificationListenerEnabled()
-        setNativeListenerEnabled(enabled)
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        syncAndroidState()
       }
     }
     document.addEventListener('visibilitychange', onVisibility)
@@ -271,7 +308,7 @@ export default function App() {
       document.removeEventListener('visibilitychange', onVisibility)
       if (cleanupFn) cleanupFn()
     }
-  }, [processIncomingNotification])
+  }, [processIncomingNotification, syncAndroidState])
 
   useEffect(() => {
     const onOnline = () => setOnline(true)
@@ -689,21 +726,37 @@ export default function App() {
                     </div>
                     {nativeAndroid ? (
                       <div className="control-card-row">
-                        <span className={`nb-badge-flat ${nativeListenerEnabled ? 'ok' : 'warn'}`}>
-                          {nativeListenerEnabled ? 'Listening Active' : 'Permission Needed'}
+                        <span className={`nb-badge-flat ${nativeListenerEnabled && nativeServiceBound ? 'ok' : 'warn'}`}>
+                          {nativeListenerEnabled
+                            ? nativeServiceBound
+                              ? 'OS Bound & Active'
+                              : 'Enabled (Binding...)'
+                            : 'Permission Needed'}
                         </span>
-                        <button
-                          className="nb-btn-primary small"
-                          onClick={openAndroidNotificationSettings}
-                        >
-                          {nativeListenerEnabled ? 'Settings' : 'Grant Access'}
-                        </button>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          {nativeListenerEnabled && (
+                            <button
+                              className="nb-btn-primary small"
+                              onClick={handleScanShade}
+                              disabled={analyzingNotif}
+                              title="Scan current Android notification shade"
+                            >
+                              Scan Shade
+                            </button>
+                          )}
+                          <button
+                            className="nb-btn-primary small"
+                            onClick={openAndroidNotificationSettings}
+                          >
+                            {nativeListenerEnabled ? 'Settings' : 'Grant Access'}
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       <div className="control-card-row">
-                        <span className="nb-badge-flat">Web Share Target Ready</span>
+                        <span className="nb-badge-flat">Browser PWA Mode</span>
                         <span className="control-hint">
-                          Share text from any Android app or build the native APK (`android/`) for auto-interception.
+                          Browsers cannot read OS notifications. Use Share -&gt; MicroPilot, Simulator below, or install the Android APK.
                         </span>
                       </div>
                     )}
