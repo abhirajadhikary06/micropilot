@@ -6,6 +6,7 @@ import {
   incrementLocalOp,
   recordLatency,
   getMetrics,
+  NOTIFICATION_LABELS,
 } from './model'
 import { getCached, setCached, type AnalysisResult } from './cache'
 
@@ -156,4 +157,158 @@ export function transformText(
 
 export function getModelStatus() {
   return getMetrics()
+}
+
+export interface IncomingNotification {
+  id: string
+  packageName: string
+  appName: string
+  title: string
+  text: string
+  timestamp: number
+}
+
+export type NotificationPriority = 'URGENT' | 'RISK' | 'IMPORTANT' | 'ROUTINE' | 'SPAM'
+
+export interface NotificationReport {
+  id: string
+  notification: IncomingNotification
+  priority: NotificationPriority
+  category: string
+  confidence: number
+  sentiment: string
+  sentimentScore: number
+  otpCode: string | null
+  amounts: string[]
+  urls: string[]
+  summaryTitle: string
+  summaryBody: string
+  inferenceMs: number
+  originalInferenceMs?: number | null
+  fromCache: boolean
+  timestamp: number
+}
+
+function extractEntities(text: string) {
+  const lower = text.toLowerCase()
+  const hasOtpContext = /\b(otp|code|pin|passcode|verify|verification|2fa)\b/i.test(lower)
+  const otpMatch = hasOtpContext ? text.match(/\b(\d{4,8})\b/) : null
+  const otpCode = otpMatch ? otpMatch[1] : null
+
+  const amountMatches = text.match(/(?:₹|Rs\.?|\$|€|£|INR|USD)\s?[\d,]+(?:\.\d{1,2})?/gi) || []
+  const urlMatches = text.match(/https?:\/\/[^\s]+/gi) || []
+
+  incrementLocalOp()
+  return {
+    otpCode,
+    amounts: Array.from(new Set(amountMatches)),
+    urls: Array.from(new Set(urlMatches)),
+  }
+}
+
+function mapCategoryToPriority(category: string): NotificationPriority {
+  switch (category) {
+    case 'Potential phishing or scam':
+      return 'RISK'
+    case 'Urgent action required':
+    case 'Security alert or OTP':
+      return 'URGENT'
+    case 'Financial or bank transaction':
+    case 'Important personal message':
+      return 'IMPORTANT'
+    case 'Promotional spam or marketing':
+      return 'SPAM'
+    default:
+      return 'ROUTINE'
+  }
+}
+
+export async function analyzeNotification(
+  notification: IncomingNotification
+): Promise<NotificationReport> {
+  const combined = `${notification.title ? notification.title + ': ' : ''}${notification.text}`.trim()
+  if (!combined) {
+    throw new Error('Empty notification text')
+  }
+
+  const cacheKey = `notif:${combined}`
+  const entities = extractEntities(combined)
+
+  const cacheStart = performance.now()
+  const cached = await getCached(cacheKey)
+  let category = 'Routine update or delivery'
+  let confidence = 0
+  let sentiment = 'neutral'
+  let sentimentScore = 0
+  let inferenceMs = 1
+  let originalInferenceMs: number | null | undefined = null
+  let fromCache = false
+
+  if (cached && cached.intent && cached.sentiment) {
+    const cacheEnd = performance.now()
+    inferenceMs = Math.max(1, Math.round(cacheEnd - cacheStart))
+    originalInferenceMs = cached.originalInferenceMs ?? cached.inferenceMs
+    recordLatency(inferenceMs)
+    category = cached.intent.label
+    confidence = cached.intent.score
+    sentiment = cached.sentiment.label
+    sentimentScore = cached.sentiment.score
+    fromCache = true
+  } else {
+    if (!isModelReady()) {
+      await loadModel()
+    }
+    const start = performance.now()
+    const intentRes = await classifyIntent(combined, NOTIFICATION_LABELS)
+    const sentRes = await classifySentiment(combined)
+    const end = performance.now()
+    inferenceMs = Math.max(1, Math.round(end - start))
+
+    category = intentRes.label
+    confidence = intentRes.score
+    sentiment = sentRes.label
+    sentimentScore = sentRes.score
+
+    const stats = computeStats(combined)
+    await setCached(cacheKey, {
+      intent: intentRes,
+      sentiment: sentRes,
+      stats,
+      inferenceMs,
+      fromCache: false,
+      timestamp: Date.now(),
+    })
+  }
+
+  const priority = mapCategoryToPriority(category)
+  const confPct = (confidence * 100).toFixed(0)
+
+  const parts: string[] = []
+  if (entities.otpCode) parts.push(`OTP: ${entities.otpCode}`)
+  if (entities.amounts.length > 0) parts.push(`Amount: ${entities.amounts[0]}`)
+  if (entities.urls.length > 0) parts.push(`Link detected`)
+  parts.push(`${sentiment.toUpperCase()} (${confPct}% conf)`)
+  parts.push(`${inferenceMs} ms on-device`)
+
+  const summaryTitle = `[${priority}] ${notification.appName} - ${category}`
+  const summaryBody = `${parts.join(' | ')}\n${combined.slice(0, 110)}${combined.length > 110 ? '...' : ''}`
+
+  return {
+    id: `rep_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    notification,
+    priority,
+    category,
+    confidence,
+    sentiment,
+    sentimentScore,
+    otpCode: entities.otpCode,
+    amounts: entities.amounts,
+    urls: entities.urls,
+    summaryTitle,
+    summaryBody,
+    inferenceMs,
+    originalInferenceMs,
+    fromCache,
+    timestamp: Date.now(),
+  }
 }

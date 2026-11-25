@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">MicroPilot</string>
+    <string name="title_activity_main">MicroPilot</string>
+    <string name="package_name">com.micropilot.edge</string>
+    <string name="custom_url_scheme">com.micropilot.edge</string>
+</resources>

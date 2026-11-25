@@ -7,27 +7,41 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'icons.svg'],
+      includeAssets: ['logo.png', 'favicon.png', 'favicon.svg'],
       manifest: {
         name: 'MicroPilot',
         short_name: 'MicroPilot',
-        description: 'Lightweight edge-only AI assistant for on-device text intelligence',
-        theme_color: '#0f172a',
-        background_color: '#0f172a',
+        description: 'On-device AI notification analyzer and edge intelligence assistant',
+        theme_color: '#0b0916',
+        background_color: '#0b0916',
         display: 'standalone',
         orientation: 'portrait',
         start_url: '/',
         icons: [
           {
+            src: 'logo.png',
+            sizes: '273x273',
+            type: 'image/png',
+            purpose: 'any maskable'
+          },
+          {
             src: 'favicon.svg',
             sizes: 'any',
-            type: 'image/svg+xml',
-            purpose: 'any maskable'
+            type: 'image/svg+xml'
           }
-        ]
+        ],
+        share_target: {
+          action: '/',
+          method: 'GET',
+          params: {
+            title: 'share_title',
+            text: 'share_text',
+            url: 'share_url'
+          }
+        }
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,svg,woff2,wasm}'],
+        globPatterns: ['**/*.{js,css,html,ico,svg,png,woff2,wasm}'],
         maximumFileSizeToCacheInBytes: 30 * 1024 * 1024,
         runtimeCaching: [
           {

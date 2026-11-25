@@ -1,18 +1,27 @@
 {
   "name": "MicroPilot",
   "short_name": "MicroPilot",
-  "description": "Lightweight edge-only AI assistant for on-device text intelligence using MobileBERT",
+  "description": "On-device AI notification analyzer and edge intelligence assistant",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0b1120",
-  "theme_color": "#0f172a",
+  "background_color": "#0b0916",
+  "theme_color": "#0b0916",
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/favicon.svg",
-      "sizes": "any",
-      "type": "image/svg+xml",
+      "src": "/logo.png",
+      "sizes": "273x273",
+      "type": "image/png",
       "purpose": "any maskable"
     }
-  ]
+  ],
+  "share_target": {
+    "action": "/",
+    "method": "GET",
+    "params": {
+      "title": "share_title",
+      "text": "share_text",
+      "url": "share_url"
+    }
+  }
 }

@@ -1,9 +1,15 @@
 import { pipeline, env, type ZeroShotClassificationPipeline } from '@huggingface/transformers'
 
-// Configure Transformers.js for browser / edge use
+// Configure Transformers.js for browser / edge / Android WebView use
 env.allowLocalModels = false
 env.useBrowserCache = true
-env.backends.onnx.wasm.proxy = true
+if (env.backends?.onnx?.wasm) {
+  const canUseThreads = typeof crossOriginIsolated !== 'undefined' && crossOriginIsolated
+  env.backends.onnx.wasm.proxy = canUseThreads
+  if (!canUseThreads) {
+    env.backends.onnx.wasm.numThreads = 1
+  }
+}
 
 const MODEL_ID = 'Xenova/mobilebert-uncased-mnli'
 const DEFAULT_DTYPE = 'q8' as const
@@ -40,6 +46,16 @@ const INTENT_LABELS = [
   'Technical question',
   'General conversation',
   'Complex reasoning request',
+]
+
+export const NOTIFICATION_LABELS = [
+  'Urgent action required',
+  'Security alert or OTP',
+  'Financial or bank transaction',
+  'Important personal message',
+  'Routine update or delivery',
+  'Promotional spam or marketing',
+  'Potential phishing or scam',
 ]
 
 const SENTIMENT_LABELS = ['positive', 'negative', 'neutral']
@@ -153,14 +169,15 @@ export function isModelReady(): boolean {
 }
 
 export async function classifyIntent(
-  text: string
+  text: string,
+  candidateLabels: string[] = INTENT_LABELS
 ): Promise<{ label: string; score: number; allScores: { label: string; score: number }[] }> {
   if (!classifier) {
     throw new Error('Model not loaded')
   }
 
   const start = performance.now()
-  const result: any = await classifier(text, INTENT_LABELS, {
+  const result: any = await classifier(text, candidateLabels, {
     multi_label: false,
   })
   const end = performance.now()
