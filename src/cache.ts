@@ -25,6 +25,7 @@ export interface AnalysisResult {
     complexity: string
   }
   inferenceMs: number | null
+  originalInferenceMs?: number | null
   fromCache: boolean
   timestamp: number
 }

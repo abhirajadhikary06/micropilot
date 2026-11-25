@@ -6,7 +6,7 @@ env.useBrowserCache = true
 env.backends.onnx.wasm.proxy = true
 
 const MODEL_ID = 'Xenova/mobilebert-uncased-mnli'
-const DEFAULT_QUANTIZED = true
+const DEFAULT_DTYPE = 'q8' as const
 
 export type ModelStatus =
   | 'idle'
@@ -101,7 +101,7 @@ export async function loadModel(onProgress?: ProgressCallback): Promise<void> {
         'zero-shot-classification',
         MODEL_ID,
         {
-          quantized: DEFAULT_QUANTIZED,
+          dtype: DEFAULT_DTYPE,
           progress_callback: (data: any) => {
             if (data.status === 'progress' && data.progress != null) {
               const p = Math.min(99, Math.round(data.progress))
@@ -172,28 +172,28 @@ export async function classifyIntent(
   metrics.avgInferenceMs = Math.round(totalInferenceMs / metrics.inferenceCount)
 
   // Normalize result shape from Transformers.js
+  const data = Array.isArray(result) ? result[0] : result
   let labels: string[] = []
   let scores: number[] = []
 
-  if (Array.isArray(result)) {
-    // sometimes returns array of {label, score}
+  if (data?.labels && data?.scores) {
+    labels = data.labels
+    scores = data.scores
+  } else if (Array.isArray(result) && result[0]?.label) {
     labels = result.map((r: any) => r.label)
     scores = result.map((r: any) => r.score)
-  } else if (result.labels && result.scores) {
-    labels = result.labels
-    scores = result.scores
   } else {
     throw new Error('Unexpected classification result shape')
   }
 
   const allScores = labels.map((label, i) => ({
     label,
-    score: scores[i],
+    score: scores[i] ?? 0,
   })).sort((a, b) => b.score - a.score)
 
   return {
-    label: allScores[0].label,
-    score: allScores[0].score,
+    label: allScores[0]?.label ?? 'Unknown',
+    score: allScores[0]?.score ?? 0,
     allScores,
   }
 }
@@ -217,26 +217,33 @@ export async function classifySentiment(
   totalInferenceMs += latency
   metrics.avgInferenceMs = Math.round(totalInferenceMs / metrics.inferenceCount)
 
+  const data = Array.isArray(result) ? result[0] : result
   let labels: string[] = []
   let scores: number[] = []
 
-  if (Array.isArray(result)) {
+  if (data?.labels && data?.scores) {
+    labels = data.labels
+    scores = data.scores
+  } else if (Array.isArray(result) && result[0]?.label) {
     labels = result.map((r: any) => r.label)
     scores = result.map((r: any) => r.score)
-  } else if (result.labels && result.scores) {
-    labels = result.labels
-    scores = result.scores
+  } else {
+    throw new Error('Unexpected classification result shape')
   }
 
-  const bestIdx = scores.indexOf(Math.max(...scores))
+  const bestIdx = scores.length > 0 ? scores.indexOf(Math.max(...scores)) : 0
   return {
-    label: labels[bestIdx],
-    score: scores[bestIdx],
+    label: labels[bestIdx] ?? 'neutral',
+    score: scores[bestIdx] ?? 0,
   }
 }
 
 export function incrementLocalOp() {
   metrics.localOpCount += 1
+}
+
+export function recordLatency(latencyMs: number) {
+  metrics.lastInferenceMs = latencyMs
 }
 
 export async function unloadModel() {

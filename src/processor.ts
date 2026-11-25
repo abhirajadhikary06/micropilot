@@ -4,6 +4,7 @@ import {
   classifyIntent,
   classifySentiment,
   incrementLocalOp,
+  recordLatency,
   getMetrics,
 } from './model'
 import { getCached, setCached, type AnalysisResult } from './cache'
@@ -75,9 +76,19 @@ export async function analyzeText(
 
   // Exact-match cache
   if (!forceRefresh) {
+    const cacheStart = performance.now()
     const cached = await getCached(normalized)
     if (cached) {
-      return cached
+      const cacheEnd = performance.now()
+      const cacheLatency = Math.max(1, Math.round(cacheEnd - cacheStart))
+      recordLatency(cacheLatency)
+      return {
+        ...cached,
+        originalInferenceMs: cached.originalInferenceMs ?? cached.inferenceMs,
+        inferenceMs: cacheLatency,
+        fromCache: true,
+        timestamp: Date.now(),
+      }
     }
   }
 

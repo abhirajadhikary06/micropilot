@@ -27,15 +27,19 @@ export default defineConfig({
         ]
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,svg,woff2}'],
+        globPatterns: ['**/*.{js,css,html,ico,svg,woff2,wasm}'],
+        maximumFileSizeToCacheInBytes: 30 * 1024 * 1024,
         runtimeCaching: [
           {
-            urlPattern: ({ url }) => url.hostname.includes('huggingface.co') || url.hostname.includes('hf.co'),
+            urlPattern: ({ url }) =>
+              url.hostname.includes('huggingface.co') ||
+              url.hostname.includes('hf.co') ||
+              url.hostname.includes('cdn.jsdelivr.net'),
             handler: 'CacheFirst',
             options: {
-              cacheName: 'model-cache',
+              cacheName: 'model-and-wasm-cache',
               expiration: {
-                maxEntries: 20,
+                maxEntries: 30,
                 maxAgeSeconds: 60 * 60 * 24 * 30 // 30 days
               },
               cacheableResponse: {
